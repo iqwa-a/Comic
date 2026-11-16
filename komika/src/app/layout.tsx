@@ -7,10 +7,16 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Komika — Setiap panel, punya cerita",
-  description: "Jelajahi komik terbaru di Komika.",
-};
+// Judul & deskripsi dari Pengaturan admin (DB); gagal DB = pakai bawaan.
+export async function generateMetadata(): Promise<Metadata> {
+  try {
+    const { getSettings } = await import("@/lib/admin-db");
+    const settings = getSettings();
+    return { title: settings.siteTitle, description: settings.siteDescription };
+  } catch {
+    return { title: "Komika — Setiap panel, punya cerita", description: "Jelajahi komik terbaru di Komika." };
+  }
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

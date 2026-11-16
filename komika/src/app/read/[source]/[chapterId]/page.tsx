@@ -1,7 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { getChapters, getPages, isSource, type Chapter } from "@/lib/comics";
+import AdSlot from "@/components/ads/ad-slot";
 import History from "./history";
 
 export const instant = false;
@@ -33,6 +35,7 @@ export default async function ReaderPage({ params, searchParams }: PageProps<"/r
     <main className="reader-page">
       <History source={sourceParam} chapterId={chapterId} title={title} comicId={comicId} />
       <header><Link href="/">← Komika</Link><span>{title}</span></header>
+      <Suspense fallback={null}><AdSlot slot="reader" /></Suspense>
       {(prev || next) && (
         <nav className="reader-nav" aria-label="Navigasi chapter">
           {prev ? <Link href={href(prev.id)}>← {prev.title}</Link> : <span />}
