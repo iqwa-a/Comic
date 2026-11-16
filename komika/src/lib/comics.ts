@@ -2,7 +2,7 @@ import https from "node:https";
 import type { LookupFunction } from "node:net";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export const sources = ["shinigami", "mangadex", "comick"] as const;
+export const sources = ["shinigami", "mangadex", "komiku"] as const;
 export type Source = (typeof sources)[number];
 
 export type Comic = {
@@ -35,7 +35,7 @@ export type Chapter = { id: string; title: string; number: number; date: string 
 const sourceNames: Record<Source, string> = {
   shinigami: "Shinigami",
   mangadex: "MangaDex",
-  comick: "Comick",
+  komiku: "Komiku",
 };
 
 const countries: Record<string, string> = { JP: "Jepang", JA: "Jepang", KR: "Korea Selatan", KO: "Korea Selatan", CN: "China", ZH: "China", ID: "Indonesia", TW: "Taiwan", TH: "Thailand", VN: "Vietnam", US: "Amerika Serikat", FR: "Prancis", IT: "Italia", ES: "Spanyol" };
@@ -109,20 +109,34 @@ function mangaDexComic(item: Record<string, any>): Comic {
   };
 }
 
-function comickComic(item: Record<string, any>): Comic {
-  const coverKey = item.md_covers?.[0]?.b2key;
+// API publik Komiku (tanpa Cloudflare). ID digabung "idAngka~slug": detail butuh slug,
+// daftar chapter & halaman butuh id angka. Komiku tidak memberi kode negara, jadi
+// jenis komik (Manhwa/Manhua/Manga) dipakai sebagai penentu bendera.
+const KOMIKU_API = "https://01.komiku.asia/api/v2";
+
+function komikuComic(item: Record<string, any>): Comic {
+  // id dari Komiku berupa angka — text() hanya menerima string, jadi dikonversi eksplisit.
+  const id = `${item.id ? String(item.id) : ""}~${text(item.slug)}`;
+  const type = text(item.type);
   return {
-    id: text(item.hid),
-    source: "comick",
+    id,
+    source: "komiku",
     title: text(item.title) || "Untitled",
-    cover: coverKey ? `https://meo.comick.pictures/${coverKey}` : "",
-    description: text(item.desc),
-    latest: item.last_chapter ? `Chapter ${item.last_chapter}` : "Comick",
-    updatedAt: text(item.uploaded_at),
-    genres: (item.genres || []).map((genre: Record<string, any>) => text(genre.name)).filter(Boolean),
-    language: "English",
-    country: countryName(text(item.country)),
-    href: `https://comick.io/comic/${encodeURIComponent(text(item.slug))}`,
+    cover: text(item.coverUrl),
+    description: text(item.synopsis),
+    latest: item.latestChapter ? `Chapter ${item.latestChapter}` : "Update terbaru",
+    updatedAt: item.latestChapterAt ? new Date(Number(item.latestChapterAt)).toISOString() : "",
+    genres: (item.genres || []).map(text).filter(Boolean),
+    language: "Indonesia",
+    country: /manhwa/i.test(type) ? countryName("KR") : /manhua/i.test(type) ? countryName("CN") : /manga/i.test(type) ? countryName("JP") : "",
+    href: `/comic/komiku/${encodeURIComponent(id)}`,
+    altTitle: text(item.alt),
+    author: text(item.author),
+    artist: text(item.artist),
+    status: text(item.status),
+    type,
+    rating: Number(item.rating) || undefined,
+    views: Number(item.views) || 0,
   };
 }
 
@@ -176,7 +190,11 @@ export async function fetchImage(value: string) {
   if (url.hostname === "uploads.mangadex.org" || url.hostname.endsWith(".mangadex.network")) {
     return requestMangaDex(url, { "User-Agent": "Komika/0.1" });
   }
-  return fetch(value, { redirect: "manual", signal: AbortSignal.timeout(8000), next: { revalidate: 3600 } });
+  // CDN Komiku memakai proteksi hotlink: menolak permintaan tanpa Referer situsnya.
+  const headers = url.hostname === "cdnkomiku.xyz"
+    ? { Referer: "https://01.komiku.asia/", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0" }
+    : undefined;
+  return fetch(value, { redirect: "manual", headers, signal: AbortSignal.timeout(8000), next: { revalidate: 3600 } });
 }
 
 async function browseShinigami(query: string, page: number) {
@@ -212,29 +230,36 @@ async function browseMangaDex(query: string, page: number, latest = false) {
   });
 }
 
-async function browseComick(query: string, page = 1) {
-  if (!query) throw new Error("Comick browse is not available; search by title instead.");
-  const params = new URLSearchParams({ q: query, limit: "18", page: String(page) });
-  const result = await request(`https://api.comick.dev/v1.0/search?${params}`);
-  return (result || []).map(comickComic);
+async function browseKomiku(query: string, page: number) {
+  // Pencarian mengembalikan seluruh hasil sekaligus, jadi pagination dilakukan di sini.
+  // Bentuk item bervariasi antar endpoint/page: kadang komik langsung, kadang dibungkus {comic}.
+  if (query) {
+    const list = await request(`${KOMIKU_API}/comics/search?q=${encodeURIComponent(query)}`);
+    return ((list || []) as Record<string, any>[]).slice((page - 1) * 18, page * 18).map((entry) => komikuComic(entry.comic || entry));
+  }
+  const result = await request(`${KOMIKU_API}/comics?page=${page}`);
+  return ((result.items || []) as Record<string, any>[]).map((entry) => komikuComic(entry.comic || entry));
 }
 
 export async function getComics(source: Source, query = "", page = 1) {
   if (source === "shinigami") return browseShinigami(query, page);
   if (source === "mangadex") return browseMangaDex(query, page);
-  if (!query.trim()) return [];
-  return browseComick(query, page);
+  return browseKomiku(query, page);
 }
 
 export async function searchAll(query: string, page = 1) {
-  const activeSources: Source[] = query.trim() ? [...sources] : ["shinigami", "mangadex"];
-  const results = await Promise.allSettled(activeSources.map((source) => getComics(source, query, page)));
+  const results = await Promise.allSettled(sources.map((source) => getComics(source, query, page)));
+  // Judul sama dari provider berbeda digabung satu entri agar hasil tidak tampil ganda.
+  const seen = new Set<string>();
+  const comics = results.flatMap((result) => result.status === "fulfilled" ? result.value : []).filter((comic) => {
+    const key = comic.title.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   return {
-    comics: results.flatMap((result) => result.status === "fulfilled" ? result.value : []),
-    sources: Object.fromEntries(sources.map((source) => {
-      const index = activeSources.indexOf(source as Source);
-      return [source, index === -1 ? "search-only" : results[index].status === "fulfilled" ? "ok" : "unavailable"];
-    })),
+    comics,
+    sources: Object.fromEntries(sources.map((source, index) => [source, results[index].status === "fulfilled" ? "ok" : "unavailable"])),
   };
 }
 
@@ -250,12 +275,20 @@ export async function getLatest(page = 1) {
   const results = await Promise.allSettled([
     getComics("shinigami", "", page),
     browseMangaDex("", page, true),
+    browseKomiku("", page),
   ]);
-  const comics = [...new Map(results.flatMap((result) => result.status === "fulfilled" ? result.value : []).map((comic) => [`${comic.source}:${comic.id}`, comic])).values()];
+  // Dedup lintas sumber: judul sama tampil sekali, entri dengan update terbaru yang menang.
+  const byTitle = new Map<string, Comic>();
+  for (const comic of results.flatMap((result) => result.status === "fulfilled" ? result.value : [])) {
+    const key = comic.title.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const prev = byTitle.get(key);
+    if (!prev || Date.parse(comic.updatedAt) > Date.parse(prev.updatedAt)) byTitle.set(key, comic);
+  }
+  const comics = [...byTitle.values()];
   comics.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
   const data = {
     comics,
-    sources: { shinigami: results[0].status === "fulfilled" ? "ok" : "unavailable", mangadex: results[1].status === "fulfilled" ? "ok" : "unavailable", comick: "search-only" },
+    sources: Object.fromEntries(sources.map((source, index) => [source, results[index].status === "fulfilled" ? "ok" : "unavailable"])),
   };
   if (comics.length) latestCache.set(page, { ...data, at: performance.now() });
   else {
@@ -276,10 +309,10 @@ export async function getComic(source: Source, id: string) {
     const result = await request(`https://api.mangadex.org/manga/${encodeURIComponent(id)}?${params}`, { headers: { "User-Agent": "Komika/0.1" } });
     return mangaDexComic(result.data || {});
   }
-  const result = await browseComick(id);
-  const comic = result.find((item: Comic) => item.id === id);
-  if (!comic) throw new Error("Comick detail is unavailable from this environment.");
-  return comic;
+  // Komiku: detail butuh slug — id disimpan gabungan "idAngka~slug".
+  const slug = id.split("~")[1] || id;
+  const result = await request(`${KOMIKU_API}/comics/${encodeURIComponent(slug)}`);
+  return komikuComic(result || {});
 }
 
 export async function getChapters(source: Source, id: string): Promise<Chapter[]> {
@@ -303,7 +336,15 @@ export async function getChapters(source: Source, id: string): Promise<Chapter[]
       number: Number(item.attributes?.chapter) || 0, date: text(item.attributes?.publishAt),
     }));
   }
-  throw new Error("Comick chapters are not available until its chapter API is verified.");
+  // Komiku: daftar chapter memakai id angka komik induk.
+  const [comicId] = id.split("~");
+  const result = await request(`${KOMIKU_API}/comics/${encodeURIComponent(comicId)}/chapters`);
+  return (result || []).map((item: Record<string, any>) => ({
+    id: `${comicId}~${item.id ? String(item.id) : ""}`,
+    title: text(item.title) || `Chapter ${item.n}`,
+    number: Number(item.n) || 0,
+    date: item.releasedAt ? new Date(Number(item.releasedAt)).toISOString() : "",
+  }));
 }
 
 export async function getPages(source: Source, chapterId: string) {
@@ -317,14 +358,17 @@ export async function getPages(source: Source, chapterId: string) {
     const chapter = result.chapter;
     return (chapter.data || []).map((filename: string) => `${result.baseUrl}/data/${chapter.hash}/${filename}`);
   }
-  throw new Error("Comick reader is not available until its chapter API is verified.");
+  // Komiku: halaman gambar diambil per chapter lewat id gabungan "idAngka~idChapter".
+  const [comicId, id] = chapterId.split("~");
+  const result = await request(`${KOMIKU_API}/comics/${encodeURIComponent(comicId)}/chapters/id/${encodeURIComponent(id || chapterId)}`);
+  return ((result.pages || []) as Record<string, any>[]).map((page) => text(page.url));
 }
 
 export function allowedImageUrl(value: string) {
   try {
     const url = new URL(value);
     return url.protocol === "https:" && (
-      ["assets.shngm.id", "uploads.mangadex.org", "meo.comick.pictures"].includes(url.hostname) ||
+      ["assets.shngm.id", "uploads.mangadex.org", "content.komiku.me", "cdnkomiku.xyz"].includes(url.hostname) ||
       url.hostname.endsWith(".mangadex.network")
     );
   } catch {

@@ -87,7 +87,7 @@ export default function LibraryView() {
         ) : (
           <div className="comic-grid library-grid">
             {(filtered as Comic[]).map((comic) => {
-              const href = comic.source === "comick" ? comic.href : `/comic/${comic.source}/${comic.id}`;
+              const href = `/comic/${comic.source}/${comic.id}`;
               return (
                 <article className="comic-card" key={`${comic.source}:${comic.id}`}>
                   <Link className="cover-wrap" href={href}>

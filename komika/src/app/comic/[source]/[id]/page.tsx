@@ -30,24 +30,18 @@ export default async function ComicPage({ params }: PageProps<"/comic/[source]/[
   const { source, id } = await params;
   if (!isSource(source)) notFound();
 
-  // Promise.allSettled menjaga bagian yang gagal (misalnya chapter Comick) tidak menggagalkan seluruh halaman.
+  // Promise.allSettled menjaga bagian yang gagal (misalnya provider lambat) tidak menggagalkan seluruh halaman.
   const [comicResult, chapterResult] = await Promise.allSettled([
     getComicCached(source, id),
-    source === "comick" ? Promise.resolve([] as Awaited<ReturnType<typeof getChapters>>) : getChapters(source, id),
+    getChapters(source, id),
   ]);
 
   if (comicResult.status !== "fulfilled") {
-    const external = `https://comick.io/comic/${encodeURIComponent(id)}`;
     return (
       <main className="message-page">
         <Link href="/">← Beranda</Link>
         <h1>Komik belum tersedia</h1>
         <p>Sumber sedang tidak merespons atau belum menyediakan detail chapter untuk judul ini.</p>
-        {source === "comick" && (
-          <a href={external} target="_blank" rel="noreferrer" className="action-btn action-primary">
-            Baca di Comick ↗
-          </a>
-        )}
       </main>
     );
   }

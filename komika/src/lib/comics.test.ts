@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { allowedImageUrl, countryName, isPublicIPv4, isSource } from "./comics";
 
-assert.equal(isSource("mangadex"), true);
+assert.equal(isSource("komiku"), true);
+assert.equal(isSource("comick"), false);
+assert.equal(allowedImageUrl("https://content.komiku.me/wp-content/uploads/2026/07/cover.jpeg"), true);
+assert.equal(allowedImageUrl("https://cdnkomiku.xyz/wp-content/9/chapter/page.jpg"), true);
+assert.equal(allowedImageUrl("https://meo.comick.pictures/cover.webp"), false);
 assert.equal(isSource("unknown"), false);
 assert.equal(countryName("ja"), "Jepang");
 assert.equal(countryName("KR"), "Korea Selatan");

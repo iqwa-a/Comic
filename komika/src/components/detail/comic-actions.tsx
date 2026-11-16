@@ -26,19 +26,11 @@ export default function ComicActions({ comic, readHref }: { comic: Comic; readHr
     }, 220);
   }
 
-  const external = comic.source === "comick";
-
   return (
     <div className="comic-actions">
-      {external ? (
-        <a href={readHref} target="_blank" rel="noreferrer" className="action-btn action-primary">
-          <PlayIcon className="w-4 h-4" /> Baca di Comick
-        </a>
-      ) : (
-        <Link href={readHref} className="action-btn action-primary">
-          <PlayIcon className="w-4 h-4" /> Baca Sekarang
-        </Link>
-      )}
+      <Link href={readHref} className="action-btn action-primary">
+        <PlayIcon className="w-4 h-4" /> Baca Sekarang
+      </Link>
 
       <button
         type="button"

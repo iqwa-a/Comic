@@ -4,8 +4,14 @@ import { allowedImageUrl, fetchImage } from "@/lib/comics";
 export async function GET(request: Request) {
   const value = new URL(request.url).searchParams.get("url") || "";
   if (!allowedImageUrl(value)) return NextResponse.json({ error: "Image host not allowed" }, { status: 400 });
+  // Satu kali coba ulang: fetch cover paralel saat katalog memuat sesekali gagal sesaat (timeout/5xx).
+  let response = await grab(value);
+  if (!response || !response.ok) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    response = await grab(value);
+  }
   try {
-    const response = await fetchImage(value);
+    if (!response) return new NextResponse(null, { status: 502 });
     const type = response.headers.get("content-type") || "";
     if (!response.ok || !["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"].includes(type.split(";")[0])) return new NextResponse(null, { status: 502 });
     if (Number(response.headers.get("content-length")) > 20_000_000) return new NextResponse(null, { status: 413 });
@@ -24,4 +30,8 @@ export async function GET(request: Request) {
   } catch {
     return new NextResponse(null, { status: 502 });
   }
+}
+
+async function grab(value: string) {
+  try { return await fetchImage(value); } catch { return null; }
 }

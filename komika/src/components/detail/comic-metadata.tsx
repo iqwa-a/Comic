@@ -7,7 +7,7 @@ export default function ComicMetadata({ comic }: { comic: Comic }) {
     { label: "Author", values: comic.author ? [comic.author] : [] },
     { label: "Artist", values: comic.artist ? [comic.artist] : [] },
     { label: "Format", values: comic.format ? [comic.format] : ["Manga"] },
-    { label: "Type", values: comic.type ? [comic.type] : [comic.source === "comick" ? "Comic" : "Manga"] },
+    { label: "Type", values: comic.type ? [comic.type] : ["Manga"] },
     { label: "Status", values: comic.status ? [comic.status] : [] },
   ].filter((row) => row.values.length > 0);
 

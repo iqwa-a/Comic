@@ -80,9 +80,7 @@ export default function ComicCarousel({ comics, eyebrow = "PALING BANYAK DIBACA"
               <span className="carousel-title">{comic.title}</span>
               <span className="carousel-latest">{comic.latest}</span>
             </>;
-            return comic.source === "comick"
-              ? <a key={`${comic.source}:${comic.id}`} href={comic.href} target="_blank" rel="noreferrer" {...props}>{inner}</a>
-              : <Link key={`${comic.source}:${comic.id}`} href={comic.href} {...props}>{inner}</Link>;
+            return <Link key={`${comic.source}:${comic.id}`} href={comic.href} {...props}>{inner}</Link>;
           })}
         </div>
       </div>

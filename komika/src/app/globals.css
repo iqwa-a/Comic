@@ -182,7 +182,6 @@ img { display: block; max-width: 100%; }
 .section-heading > a { font-size: 10px; color: #c4b5fd; white-space: nowrap; }
 .section-heading > a span { margin-left: 8px; }
 .source-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 12px; flex-wrap: wrap; }
-.source-tabs + .source-tabs { border-bottom: 0; padding-bottom: 0; margin-top: 10px; }
 .source-tabs button { border: 1px solid var(--line); background: var(--surface); color: var(--muted); padding: 8px 12px; font-size: 9px; border-radius: 3px; transition: .2s; }
 .source-tabs button:hover { border-color: var(--accent); color: var(--text); }
 .source-tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; }

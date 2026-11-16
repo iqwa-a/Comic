@@ -43,11 +43,9 @@ export default function DetailView({ comic, chapters }: { comic: Comic; chapters
   const currentPage = Math.min(page, totalPages);
   const pageChapters = visibleChapters.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
   const firstChapter = chapters[chapters.length - 1]; // Chapter terlama — "Baca Sekarang" mulai dari awal, bukan chapter terbaru.
-  const readHref = comic.source === "comick"
-    ? comic.href
-    : firstChapter
-      ? `/read/${comic.source}/${encodeURIComponent(firstChapter.id)}?title=${encodeURIComponent(comic.title)}&comic=${encodeURIComponent(comic.id)}`
-      : "#";
+  const readHref = firstChapter
+    ? `/read/${comic.source}/${encodeURIComponent(firstChapter.id)}?title=${encodeURIComponent(comic.title)}&comic=${encodeURIComponent(comic.id)}`
+    : "#";
 
   function changeQuery(value: string) { setQuery(value); setPage(1); }
   function changeSort(value: SortKey) { setSort(value); setPage(1); }
