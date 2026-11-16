@@ -17,11 +17,9 @@ function useMounted() { return useSyncExternalStore(subscribeNoop, () => true, (
 
 // --- Pembantu kartu gaya grid update (waktu singkat, bendera, views, pil chapter) ---
 // Semua yang memakai Date.now hanya dipanggil setelah mount agar hydration aman.
-const WIB_TIME = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" });
-const WIB_DATE = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "2-digit", month: "short" });
 const WIB_FULL = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-// Label waktu kartu memakai WIB (jam situs), bukan jam perangkat pengunjung:
-// < 1 jam "45m", < 24 jam jam WIB "04.35", < 30 hari "17 Nov", selebihnya "2b".
+// Label waktu kartu berdurasi relatif terhadap sekarang: "45m" (menit), "3j" (jam),
+// "1h" (hari), "2b" (bulan). Tooltip hover tetap menampilkan jam WIB lengkap.
 function timeLabel(value?: string) {
   if (!value) return "";
   const time = Date.parse(value);
@@ -29,8 +27,8 @@ function timeLabel(value?: string) {
   const minutes = Math.floor((Date.now() - time) / 60_000);
   if (minutes < 1) return "baru";
   if (minutes < 60) return `${minutes}m`;
-  if (minutes < 1440) return WIB_TIME.format(time);
-  if (minutes < 43_200) return WIB_DATE.format(time);
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}j`;
+  if (minutes < 43_200) return `${Math.floor(minutes / 1440)}h`;
   return `${Math.floor(minutes / 43_200)}b`;
 }
 function timeTitle(value?: string) {

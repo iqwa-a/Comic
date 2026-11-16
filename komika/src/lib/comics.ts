@@ -263,40 +263,57 @@ export async function searchAll(query: string, page = 1) {
   };
 }
 
-// Cache memorial untuk getLatest: refresh dalam 5 menit per halaman tidak memukul provider lagi,
-// dan bila semua provider gagal, cache basi terakhir dipakai agar katalog tak pernah kosong.
-// performance.now() dipakai (bukan Date.now) karena stabil untuk prerender (aturan Cache Components).
-const latestCache = new Map<number, { comics: Comic[]; sources: Record<string, string>; at: number }>();
+// Cache per (sumber, halaman provider): halaman katalog N butuh halaman 1..N dari tiap sumber,
+// dan cache inilah yang membuat depth bertambah tidak memukul ulang halaman lama (TTL 5 menit).
+const providerCache = new Map<string, { comics: Comic[]; at: number }>();
+// Cache basi terakhir: bila semua provider gagal, katalog tetap tidak kosong.
+let latestStale: Comic[] | null = null;
+const PROVIDER_TTL = 300_000;
+const MAX_DEPTH = 10;
+
+async function providerLatest(source: Source, page: number): Promise<Comic[]> {
+  const key = `${source}:${page}`;
+  const hit = providerCache.get(key);
+  if (hit && performance.now() - hit.at < PROVIDER_TTL) return hit.comics;
+  let comics: Comic[] = [];
+  if (source === "shinigami") comics = await getComics("shinigami", "", page);
+  else if (source === "mangadex") comics = await browseMangaDex("", page, true);
+  else comics = await browseKomiku("", page);
+  if (comics.length) providerCache.set(key, { comics, at: performance.now() });
+  return comics;
+}
 
 export async function getLatest(page = 1) {
-  // Cache per halaman: page 2, 3, … harus mem-fetch provider, bukan mendapat ulang isi page 1.
-  const cached = latestCache.get(page);
-  if (cached && performance.now() - cached.at < 300_000) return cached;
-  const results = await Promise.allSettled([
-    getComics("shinigami", "", page),
-    browseMangaDex("", page, true),
-    browseKomiku("", page),
-  ]);
+  // Semua halaman katalog dipotong dari pool gabungan yang SAMA (halaman 1..MAX_DEPTH tiap
+  // sumber, diurutkan waktu). Pool yang sama = waktu antar halaman pasti menerus, tidak mundur.
+  // Cold fetch hanya sekali per TTL dan hasilnya dibagi ke semua pengunjung (cache modul).
+  const depth = MAX_DEPTH;
+  const results = await Promise.allSettled(
+    sources.flatMap((source) => Array.from({ length: depth }, (_, i) => providerLatest(source, i + 1)))
+  );
+  const values = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   // Dedup lintas sumber: judul sama tampil sekali, entri dengan update terbaru yang menang.
   const byTitle = new Map<string, Comic>();
-  for (const comic of results.flatMap((result) => result.status === "fulfilled" ? result.value : [])) {
+  for (const comic of values) {
     const key = comic.title.toLowerCase().replace(/[^a-z0-9]+/g, "");
     const prev = byTitle.get(key);
     if (!prev || Date.parse(comic.updatedAt) > Date.parse(prev.updatedAt)) byTitle.set(key, comic);
   }
-  const comics = [...byTitle.values()];
-  comics.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-  const data = {
-    comics,
-    sources: Object.fromEntries(sources.map((source, index) => [source, results[index].status === "fulfilled" ? "ok" : "unavailable"])),
-  };
-  if (comics.length) latestCache.set(page, { ...data, at: performance.now() });
-  else {
-    // Semua provider gagal: sajikan cache basi mana pun agar katalog tidak kosong.
-    const stale = [...latestCache.values()][0];
-    if (stale) return stale;
+  const merged = [...byTitle.values()].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  if (merged.length) latestStale = merged;
+  const start = (page - 1) * 18;
+  if (!merged.length && latestStale) {
+    // Semua provider gagal: sajikan pool basi terakhir agar katalog tetap terisi.
+    return { comics: latestStale.slice(start, start + 18), sources: Object.fromEntries(sources.map((s) => [s, "unavailable"])) };
   }
-  return data;
+
+  // Status provider: gagal bila SEMUA halaman permintaannya gagal.
+  const sources_status: Record<string, string> = {};
+  sources.forEach((source) => {
+    const owned = results.filter((_, index) => Math.floor(index / depth) === sources.indexOf(source));
+    sources_status[source] = owned.some((result) => result.status === "fulfilled") ? "ok" : "unavailable";
+  });
+  return { comics: merged.slice(start, start + 18), sources: sources_status };
 }
 
 export async function getComic(source: Source, id: string) {
